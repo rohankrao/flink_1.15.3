@@ -23,6 +23,7 @@ import microsoft.sql.DateTimeOffset;
 import org.apache.flink.connector.jdbc.converter.AbstractJdbcRowConverter;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.data.TimestampData;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
