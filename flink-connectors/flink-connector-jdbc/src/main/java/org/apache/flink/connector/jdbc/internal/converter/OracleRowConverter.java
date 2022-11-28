@@ -18,6 +18,8 @@
 
 package org.apache.flink.connector.jdbc.internal.converter;
 
+import oracle.sql.ROWID;
+
 import org.apache.flink.connector.jdbc.converter.AbstractJdbcRowConverter;
 import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.StringData;
@@ -43,6 +45,9 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.ZonedDateTime;
+import java.util.Calendar;
+import java.util.Locale;
+import java.util.TimeZone;
 
 /**
  * Runtime converter that responsible to convert between JDBC object and Flink internal object for
@@ -54,6 +59,31 @@ public class OracleRowConverter extends AbstractJdbcRowConverter {
 
     public OracleRowConverter(RowType rowType) {
         super(rowType);
+    }
+
+    private Timestamp getTimeStamp(byte[] var1){
+        Calendar cal = (Calendar)((Calendar.getInstance(TimeZone.getTimeZone("GMT"), Locale.US))) ;
+        int var2 = ((var1[0] & 255) - 100) * 100 + (var1[1] & 255) - 100;
+        int year = var2 < 0 ? var2 + 1 : var2;
+        int month = var1[2] - 1;
+        int day = var1[3];
+        int hour = var1[4] - 1;
+        int min = var1[5] - 1;
+        int sec = var1[6] - 1;
+        int millisec = 0;
+        int nanoSec = ((((var1[7] & 255) << 24) | (var1[8] & 255) << 16) | (var1[9] & 255) << 8) | var1[10] & 255 & 255 ;
+
+        cal.set(1, year);
+        cal.set(2, month);
+        cal.set(5, day);
+        cal.set(11, hour);
+        cal.set(12, min);
+        cal.set(13, sec);
+        cal.set(14, millisec);
+        long ts_ms = cal.getTimeInMillis();
+        Timestamp ts = new Timestamp(ts_ms);
+        ts.setNanos(nanoSec);
+        return ts;
     }
 
     @Override
@@ -116,6 +146,8 @@ public class OracleRowConverter extends AbstractJdbcRowConverter {
                                 ? StringData.fromString(((CHAR) val).getString())
                                 : (val instanceof OracleClob)
                                         ? StringData.fromString(((OracleClob) val).stringValue())
+                                        : (val instanceof ROWID)
+                                                ? StringData.fromString(((ROWID) val).stringValue())
                                         : StringData.fromString((String) val);
             case BINARY:
             case VARBINARY:
@@ -151,9 +183,18 @@ public class OracleRowConverter extends AbstractJdbcRowConverter {
                                 : (int) (((Time) val).toLocalTime().toNanoOfDay() / 1_000_000L);
             case TIMESTAMP_WITHOUT_TIME_ZONE:
                 return val ->
-                        val instanceof TIMESTAMP
-                                ? TimestampData.fromTimestamp(((TIMESTAMP) val).timestampValue())
-                                : TimestampData.fromTimestamp((Timestamp) val);
+                {
+                            TimestampData data;
+                            if(val instanceof TIMESTAMP){
+                                data = TimestampData.fromTimestamp(((TIMESTAMP) val).timestampValue());
+                            }else if (val instanceof TIMESTAMPTZ) {
+                                TIMESTAMPTZ ts = (TIMESTAMPTZ)val;
+                                data = TimestampData.fromTimestamp(this.getTimeStamp(ts.getBytes()));
+                            }   else{
+                                data = TimestampData.fromTimestamp((Timestamp) val);
+                            }
+                            return data;
+                };
             case TIMESTAMP_WITH_TIME_ZONE:
                 return val -> {
                     if (val instanceof TIMESTAMPTZ) {
