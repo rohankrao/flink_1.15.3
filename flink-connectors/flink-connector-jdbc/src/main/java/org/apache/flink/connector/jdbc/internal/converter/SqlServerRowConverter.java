@@ -18,9 +18,15 @@
 
 package org.apache.flink.connector.jdbc.internal.converter;
 
+import microsoft.sql.DateTimeOffset;
+
 import org.apache.flink.connector.jdbc.converter.AbstractJdbcRowConverter;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.data.TimestampData;
+
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 /**
  * Runtime converter that responsible to convert between JDBC object and Flink internal object for
@@ -44,6 +50,18 @@ public class SqlServerRowConverter extends AbstractJdbcRowConverter {
         switch (type.getTypeRoot()) {
             case TINYINT:
                 return val -> ((Short) val).byteValue();
+            case TIMESTAMP_WITHOUT_TIME_ZONE:
+                return val ->{
+                    TimestampData data;
+                    if(val instanceof LocalDateTime){
+                        data = TimestampData.fromLocalDateTime((LocalDateTime) val);
+                    }else if(val instanceof DateTimeOffset){
+                        data = TimestampData.fromTimestamp(((DateTimeOffset) val).getTimestamp());
+                    }else{
+                        data = TimestampData.fromTimestamp((Timestamp) val);
+                    }
+                    return data;
+                };
             default:
                 return super.createInternalConverter(type);
         }
